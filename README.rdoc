@@ -1,28 +1,91 @@
 == README
 
-This README would normally document whatever steps are necessary to get the
-application up and running.
+Step to Step to deploy a rails application with capistrano 3, nginx & puma
 
-Things you may want to cover:
+1. Prepare rails app
+  - push application code to github repository
+  - install rails 5.1.5
+  - use rvm to setup ruby version & ruby gemset
+    rvm --create --ruby-version use ruby-2.5.0@deploy_boilerblade
+2. Add capistrano, puma
+  
+  gem 'dotenv-rails'
 
-* Ruby version
+  group :development do
+    # capistrano for deploying to the server
+    gem 'capistrano',         require: false
+    gem 'capistrano-rvm',     require: false
+    gem 'capistrano-nginx'
+    gem 'capistrano-rails',   require: false
+    gem 'capistrano-rails-db'
+    gem 'capistrano-rails-console'
+    gem 'capistrano-upload-config'
+    gem 'capistrano-bundler', require: false
+    gem 'capistrano3-puma',   require: false
+    gem 'sshkit-sudo'
+  end
 
-* System dependencies
+  bundle install
+  cap install
 
-* Configuration
+3. Setting configuration for capistrano
+  Check file: deploy.rb, deploy/production.rb, application.rb
 
-* Database creation
+4. Run cap production deploy
+  You will see some errors, please follow the trace and fix one by one.
 
-* Database initialization
+  a. Create repository with the corresponding name, and the linked_dir, linked_files on server.
+  b. Setup database
+  c. generate secret_key_base, in this case, i use gem `dotenv-rails` to generate file .env for enviroment variables
+  d. install related requirements. for example: rvm, rails, ruby version, nginx, puma, node, etc...
 
-* How to run the test suite
+5. Config nginx on server production
+  in this case: ubuntu 14.6 LTS, digitalocean.
 
-* Services (job queues, cache servers, search engines, etc.)
+  nginx config files:
 
-* Deployment instructions
+  ....
 
-* ...
+  #user: harry
+  #app: deploy_boilerblade
+
+  http {
+    upstream deploy_boilerblade {
+        server unix:///home/harry/torung/apps/deploy_boilerblade/shared/tmp/sockets/deploy_boilerblade-puma.sock;
+    }
+
+    server {
+        listen 80;
+        server_name yourservername.vn;
+
+        root /home/harry/torung/apps/alime/current/public;
+        access_log /home/harry/torung/apps/alime/current/log/nginx.access.log;
+        error_log /home/harry/torung/apps/alime/current/log/nginx.error.log info;
+
+        location ^~ /assets/ {
+          gzip_static on;
+          expires max;
+          add_header Cache-Control public;
+        }
+
+        try_files $uri/index.html $uri @deploy_boilerblade;
+        location @deploy_boilerblade {
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header Host $http_host;
+          proxy_redirect off;
+
+          proxy_pass http://puma;
+        }
+
+        error_page 500 502 503 504 /500.html;
+        client_max_body_size 10M;
+        keepalive_timeout 10;
+      }
+  }
+
+  .....
+
+  6. restart nginx or use smart_restart at deploy.rb
 
 
-Please feel free to use a different markup language if you do not plan to run
-<tt>rake doc:app</tt>.
+
